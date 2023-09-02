@@ -136,10 +136,11 @@ def main():
         print(f'Behavior cloning model performance: {bc_model_reward}')
 # If behavior cloning terminate the script early
         if args.behavior_cloning:
+            #  return
              sys.exit()
         # Reset the behavior cloning optimizer
         bc_model.reset()
-
+    
 
     if args.dril:
         expert_dataset = ExpertDataset(args.demo_data_dir, args.env_name,

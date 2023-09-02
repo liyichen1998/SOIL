@@ -34,6 +34,24 @@ def copy_mlp_weights(baselines_model):
         params[key] = torch.tensor(params[key])
     return params
 
+# Convert weights from tensorflow to pytorch
+def copy_mlp_weights_part(baselines_model):
+    model_params = baselines_model.get_parameters()
+
+    params = {
+        'base.actor.0.weight':model_params['model/pi_fc0/w:0'].T,
+        'base.actor.0.bias':model_params['model/pi_fc0/b:0'].squeeze(),
+        'base.actor.2.weight':model_params['model/pi_fc1/w:0'].T,
+        'base.actor.2.bias':model_params['model/pi_fc1/b:0'].squeeze(),
+        # 'dist.fc_mean.weight':model_params['model/pi/w:0'].T,
+        # 'dist.fc_mean.bias':model_params['model/pi/b:0'],
+        # 'dist.logstd._bias':model_params['model/pi/logstd:0'].T
+    }
+
+    for key in params.keys():
+        params[key] = torch.tensor(params[key])
+    return params
+
 def copy_cnn_weights(baselines_model):
     model_params = baselines_model.get_parameters()
 
@@ -68,7 +86,7 @@ class Flatten(nn.Module):
 
 
 class Policy(nn.Module):
-    def __init__(self, obs_shape, action_space, base=None, base_kwargs=None, load_expert=None,
+    def __init__(self, obs_shape, action_space, base=None, base_kwargs=None, load_expert=None,partial_load = False,
                  env_name=None, rl_baseline_zoo_dir=None, expert_algo=None, normalize=True):
         super(Policy, self).__init__()
 
@@ -102,6 +120,41 @@ class Policy(nn.Module):
             raise Exception('Error')
         else:
             raise NotImplementedError
+        
+        # if load_expert == True and env_name not in ['duckietown', 'highway-v0']:
+        #     print('[Loading half Expert --- Base]')
+        #     model_path = os.path.join(rl_baseline_zoo_dir, 'trained_agents', f'{expert_algo}')
+        #     try:
+        #         import mpi4py
+        #         from stable_baselines import TRPO
+        #     except ImportError:
+        #         mpi4py = None
+        #         DDPG, TRPO = None, None
+
+        #     from stable_baselines import PPO2
+
+        #     model_path = f'{model_path}/{env_name}.pkl'
+        #     if env_name in ['AntBulletEnv-v0']:
+        #         baselines_model = TRPO.load(model_path)
+        #     else:
+        #         baselines_model = PPO2.load(model_path)
+        #     for key, value in baselines_model.get_parameters().items():
+        #         print(key, value.shape)
+
+        #     if load_expert == True and base.__name__ == 'MLPBase':
+        #         print(['Loading MLPBase expert model'])
+        #         params = copy_mlp_weights(baselines_model)
+        #     else:
+        #         raise NotImplementedError
+
+        #     #TODO: I am not sure what this is doing
+        #     try:
+        #         self.load_state_dict(params)
+        #         self.obs_shape = obs_shape[0]
+        #     except:
+        #         self.base = base(obs_shape[0]+ 1, **base_kwargs)
+        #         self.load_state_dict(params)
+        #         self.obs_shape = obs_shape[0] +1
 
         if load_expert == True and env_name not in ['duckietown', 'highway-v0']:
             print('[Loading Expert --- Base]')
@@ -120,23 +173,39 @@ class Policy(nn.Module):
                 baselines_model = TRPO.load(model_path)
             else:
                 baselines_model = PPO2.load(model_path)
-            for key, value in baselines_model.get_parameters().items():
-                print(key, value.shape)
+            # for key, value in baselines_model.get_parameters().items():
+            #     print(key, value.shape)
 
             if base.__name__ == 'CNNBase':
                 print(['Loading CNNBase expert model'])
-                params = copy_cnn_weights(baselines_model)
+                if partial_load:
+                    raise NotImplementedError
+                else:
+                    params = copy_cnn_weights(baselines_model)
             elif load_expert == True and base.__name__ == 'MLPBase':
                 print(['Loading MLPBase expert model'])
-                params = copy_mlp_weights(baselines_model)
-
+                if partial_load:
+                    print(['Loading Feature Only'])
+                    params = copy_mlp_weights_part(baselines_model)
+                else:
+                    params = copy_mlp_weights(baselines_model)
+            else:
+                raise NotImplementedError
+            
+            # load pretrained weight
+            model_dict = self.state_dict()
+            pretrained_dict = {k: v for k, v in params.items() if k in model_dict}
+            model_dict.update(pretrained_dict)
+            
             #TODO: I am not sure what this is doing
             try:
-                self.load_state_dict(params)
+                self.load_state_dict(model_dict)
+                
                 self.obs_shape = obs_shape[0]
             except:
                 self.base = base(obs_shape[0]+ 1, **base_kwargs)
-                self.load_state_dict(params)
+                # self.load_state_dict(params)
+                self.load_state_dict(model_dict)
                 self.obs_shape = obs_shape[0] +1
 
 
@@ -292,10 +361,10 @@ class CNNBase(NNBase):
         self.flatten = Flatten()
         self.critic_linear = (nn.Linear(hidden_size, 1))
 
-        init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
-                               constant_(x, 0))
+        # init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
+        #                        constant_(x, 0))
 
-        self.critic_linear = (nn.Linear(hidden_size, 1))
+        # self.critic_linear = (nn.Linear(hidden_size, 1))
         self.normalize = normalize
 
         self.train()
@@ -327,6 +396,8 @@ class MLPBase(NNBase):
 
         init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
                                constant_(x, 0), np.sqrt(2))
+        # init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
+        #                        constant_(x, 0), nn.init.calculate_gain('tanh'))
 
         self.actor = nn.Sequential(
             init_(nn.Linear(num_inputs, hidden_size)), nn.Tanh(),
@@ -357,7 +428,7 @@ class DuckieTownCNN(NNBase):
         super(DuckieTownCNN, self).__init__(recurrent, hidden_size, hidden_size)
 
         init_ = lambda m: init(m, nn.init.orthogonal_, lambda x: nn.init.
-                               constant_(x, 0), nn.init.calculate_gain('relu'))
+                               constant_(x, 0), nn.init.calculate_gain('relu'))  # maybe tanh is better
 
         flat_size = 32 * 9 * 14
 

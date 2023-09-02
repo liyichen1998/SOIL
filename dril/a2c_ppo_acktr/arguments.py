@@ -9,18 +9,31 @@ def get_args():
     parser = argparse.ArgumentParser(description='RL')
     # Behavior Cloning  ---------------------------------
     parser.add_argument(
+        '--rounds', type=int, default=20, help='new data per learning round (default: 50')
+    parser.add_argument(
+        '--data_per_round', type=int, default=50, help='new data per learning round (default: 50')
+    parser.add_argument(
         '--bc_lr', type=float, default=2.5e-4, help='behavior cloning learning rate (default: 2.5e-4)')
     parser.add_argument(
-        '--bc_batch_size', type=int, default=100, help='behavior cloning batch size (default: 100')
+        '--bc_batch_size', type=int, default=100, help='behavior cloning batch size (default: 100')#500
     parser.add_argument(
-        '--bc_train_epoch', type=int, default=2001, help='behavior cloning training epochs (default=500)')
+        '--bc_train_epoch', type=int, default=10000, help='behavior cloning training epochs (default=500)') #2001
+    parser.add_argument(
+        '--dagger', default=False, action='store_true',
+        help='**_Only_** train model with dagger (default: True)')
+    parser.add_argument(
+        '--logger', default=True, action='store_true',
+        help='**_Only_** train model with linear loss aggregration (default: True)')
     parser.add_argument(
         '--behavior_cloning', default=False, action='store_true',
         help='**_Only_** train model with behavior cloning (default: False)')
     parser.add_argument(
         '--warm_start', default=False, action='store_true',
         help='train model with behavior cloning and then train with reinforcement learning starting with learned policy (default: False)')
-
+    parser.add_argument(
+        '--inherit', default=False, action='store_true',
+        help='new model training will inherit previous trainied model as initialization')
+    
     # DRIL  ---------------------------------
     parser.add_argument(
         '--dril', default=False, action='store_true',
@@ -32,22 +45,22 @@ def get_args():
         '--pretain_ensemble_only', default=False, action='store_true',
         help='train the ensemble only and then exit')
     parser.add_argument(
-        '--ensemble_hidden_size', default=512,
+        '--ensemble_hidden_size', default=64, #512
         help='dril ensemble network number of hidden units (default: 512)')
     parser.add_argument(
         '--ensemble_drop_rate', default=0.1,
         help='dril dropout ensemble netwrok rate (default: 0.1)')
     parser.add_argument(
-        '--ensemble_size', type=int, default=5,
+        '--ensemble_size', type=int, default=25,
         help='numnber of polices in the ensemble (default: 5)')
     parser.add_argument(
-        '--ensemble_batch_size', type=int, default=100,
+        '--ensemble_batch_size', type=int, default=500,
         help='dril ensemble training batch size (default: 100)')
     parser.add_argument(
         '--ensemble_lr', type=float, default=2.5e-4,
         help='dril ensemble learning rate (default: 2.5e-4)')
     parser.add_argument(
-        '--num_ensemble_train_epoch', type=int, default=2001,
+        '--num_ensemble_train_epoch', type=int, default=10000,
         help='dril ensemble number of training epoch (default: 500)')
     parser.add_argument(
         '--ensemble_quantile_threshold', type=float, default=0.98,
@@ -58,7 +71,7 @@ def get_args():
     parser.add_argument(
         '--ensemble_shuffle_type',
         choices=['no_shuffle', 'sample_w_replace', 'norm_shuffle'],
-        default='sample_w_replace')
+        default='norm_shuffle') #'sample_w_replace'
     #TODO: Think of better way to handle this
     parser.add_argument(
         '--dril_cost_clip',
@@ -110,17 +123,17 @@ def get_args():
         default='./trained_results/',
         help='directory to save agent training logs (default: ./trained_results/)')
     parser.add_argument(
-        '--training_data_split', type=float, default=0.8,
+        '--training_data_split', type=float, default=1,
         help='training split for the behavior cloning data between (0-1) (default: 0.8)')
     parser.add_argument(
         '--load_expert', default=False, action='store_true',
         help='load pretrained expert from rl-baseline-zoo (default: False)')
     parser.add_argument(
         '--subsample_frequency', type=int, default=20,
-        help='frequency to subsample demonstration data (default: 20)')
+        help='frequency to subsample demonstration data (default: 20)')#20 999
     parser.add_argument(
         '--subsample', action='store_true',
-        default=False,
+        default=True,
         help='boolean to indicate if the demonstration data will be subsampled (default: False)')
     parser.add_argument(
         '--norm-reward-stable-baseline',

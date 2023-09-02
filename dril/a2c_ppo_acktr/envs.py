@@ -11,8 +11,7 @@ from baselines import bench
 from baselines.common.atari_wrappers import make_atari, wrap_deepmind, WarpFrame, ClipRewardEnv, FrameStack, ScaledFloatFrame
 from baselines.common.vec_env.dummy_vec_env import DummyVecEnv
 from baselines.common.vec_env.shmem_vec_env import ShmemVecEnv
-from baselines.common.vec_env.vec_normalize import \
-    VecNormalize as VecNormalize_
+from baselines.common.vec_env.vec_normalize import VecNormalize as VecNormalize_
 from baselines.common.retro_wrappers import make_retro #, wrap_deepmind_retro
 
 from dril.a2c_ppo_acktr.stable_baselines.base_vec_env import VecEnvWrapper
@@ -252,6 +251,11 @@ class VecPyTorch(VecEnvWrapper):
 
     def reset(self):
         obs = self.venv.reset()
+        # try :
+        #     obs = self.venv.reset()
+        # except:
+        #     # obs = self.venv.reset()
+        #     raise NotImplementedError
         obs = torch.from_numpy(obs).float().to(self.device)
         return obs
 
@@ -378,9 +382,10 @@ class VecNormalizeBullet(VecEnvWrapper):
         """
         obs, rews, news, infos = self.venv.step_wait()
         self.ret = self.ret * self.gamma + rews
-        if isinstance(self.venv.envs[0], TimeFeatureWrapper):
-            # Remove index corresponding to time
-            self.old_obs = obs[:,:-1]
+        if hasattr(self.venv, 'envs'):
+            if isinstance(self.venv.envs[0], TimeFeatureWrapper):
+                # Remove index corresponding to time
+                self.old_obs = obs[:,:-1]
         else:
             self.old_obs = obs
 
@@ -425,11 +430,17 @@ class VecNormalizeBullet(VecEnvWrapper):
                 self.old_obs = [obs]
         else:
             #self.old_obs = obs
-            if isinstance(self.venv.envs[0], TimeFeatureWrapper):
-                # Remove index corresponding to time
-                self.old_obs = obs[:,:-1]
+            if hasattr(self.venv, 'envs'):
+                if isinstance(self.venv.envs[0], TimeFeatureWrapper):
+                    # Remove index corresponding to time
+                    self.old_obs = obs[:,:-1]
             else:
                 self.old_obs = obs
+            # if isinstance(self.venv.envs[0], TimeFeatureWrapper):
+            #     # Remove index corresponding to time
+            #     self.old_obs = obs[:,:-1]
+            # else:
+            #     self.old_obs = obs
 
         self.ret = np.zeros(self.num_envs)
         return self._normalize_observation(obs)

@@ -10,12 +10,13 @@ class Flatten(nn.Module):
 
 # ensemble of linear layers parallelized for GPU
 class EnsembleLinearGPU(nn.Module):
-    def __init__(self, in_features, out_features, n_ensemble, bias=True):
+    def __init__(self, in_features, out_features, n_ensemble, bias=True, init_param = 'tanh'):
         super(EnsembleLinearGPU, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
         self.n_ensemble = n_ensemble
         self.bias = bias
+        self.init_param = init_param
         self.weights = nn.Parameter(torch.Tensor(n_ensemble, out_features, in_features))
         if bias:
             self.biases  = nn.Parameter(torch.Tensor(n_ensemble, out_features))
@@ -23,15 +24,30 @@ class EnsembleLinearGPU(nn.Module):
             self.register_parameter('biases', None)
         self.reset_parameters()
 
+    # #original initialization
+    # def reset_parameters(self):
+    #     for weight in self.weights:
+    #         w = nn.Linear(self.in_features, self.out_features)
+    #         torch.nn.init.kaiming_uniform_(weight, a=math.sqrt(5))
+    #     if self.biases is not None:
+    #         for bias in self.biases:
+    #             fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(self.weights[0])
+    #             bound = 1 / math.sqrt(fan_in)
+    #             torch.nn.init.uniform_(bias, -bound, bound)
     def reset_parameters(self):
+        if self.init_param == 'tanh':
+            gain = torch.nn.init.calculate_gain('tanh')  # Calculate gain factor for Tanh
+        elif self.init_param == 'relu':
+            gain = torch.nn.init.calculate_gain('relu')
+        elif self.init_param == 'sqrt':
+            gain = torch.sqrt(torch.tensor(2.0))
+        else:
+            gain = 1
+
         for weight in self.weights:
-            w = nn.Linear(self.in_features, self.out_features)
-            torch.nn.init.kaiming_uniform_(weight, a=math.sqrt(5))
+            torch.nn.init.orthogonal_(weight, gain=gain)  # Orthogonal initialization with gain
         if self.biases is not None:
-            for bias in self.biases:
-                fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(self.weights[0])
-                bound = 1 / math.sqrt(fan_in)
-                torch.nn.init.uniform_(bias, -bound, bound)
+            torch.nn.init.constant_(self.biases, 0)  # Initialize biases to 0
 
     def forward(self, inputs):
         # check input sizes
@@ -174,6 +190,20 @@ class PolicyEnsembleMLP(nn.Module):
     def forward(self, obs):
         h = F.relu(self.layer1(obs))
         h = F.relu(self.layer2(h))
+        a = self.layer3(h)
+        return a
+    
+class PolicyEnsembleMLP_simple(nn.Module):
+    def __init__(self, n_inputs, n_actions, n_hidden, n_ensemble):
+        super(PolicyEnsembleMLP_simple, self).__init__()
+
+        self.layer1 = EnsembleLinearGPU(n_inputs, n_hidden, n_ensemble, init_param = 'sqrt')
+        self.layer2 = EnsembleLinearGPU(n_hidden, n_hidden, n_ensemble, init_param = 'sqrt')
+        self.layer3 = EnsembleLinearGPU(n_hidden, n_actions, n_ensemble, init_param = 'None')
+
+    def forward(self, obs):
+        h = torch.tanh(self.layer1(obs))
+        h = torch.tanh(self.layer2(h))
         a = self.layer3(h)
         return a
 
